@@ -2,7 +2,7 @@
 driver:
   name: docker
 platforms:
-  - name: zabbix-server-${MY_MOLECULE_VERSION:-v70}-${MY_MOLECULE_DATABASE:-mysql}-${MY_MOLECULE_CONTAINER:-rockylinux8}
+  - name: zabbix-server-${MY_MOLECULE_VERSION:-v64}-${MY_MOLECULE_DATABASE:-mysql}-${MY_MOLECULE_CONTAINER:-rockylinux8}
     image: geerlingguy/docker-${MY_MOLECULE_IMAGE:-rockylinux8}-ansible:latest
     privileged: true
     pre_build_image: true
@@ -13,7 +13,8 @@ platforms:
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
     groups:
       - ${MY_MOLECULE_DATABASE:-mysql}
-      - ${MY_MOLECULE_VERSION:-v70}
+      - ${MY_MOLECULE_VERSION:-v64}
+      - ${MY_MOLECULE_INTERPRETER:-python3}
 
 provisioner:
   name: ansible
@@ -22,19 +23,23 @@ provisioner:
     ANSIBLE_ROLES_PATH: $HOME/.ansible/collections/ansible_collections/community/zabbix/roles
   inventory:
     group_vars:
-      all:
-        zabbix_repo_apt_priority: 1
-        zabbix_repo_yum_gpg_check: 1
-      v70:
-        zabbix_server_version: 7.0
+      python3:
+        ansible_python_interpreter: /usr/bin/python3
+      python:
+        ansible_python_interpreter: /usr/bin/python
       v64:
         zabbix_server_version: 6.4
+      v62:
+        zabbix_server_version: 6.2
       v60:
         zabbix_server_version: 6.0
+      v50:
+        zabbix_server_version: 5.0
       mysql:
         zabbix_server_dbname: zabbix
         zabbix_server_dbuser: zabbix-dbuser
         zabbix_server_database: mysql
+        zabbix_server_dbport: 3306
         zabbix_server_dbhost: "{{ inventory_hostname }}-db"
         zabbix_server_dbhost_run_install: false
         zabbix_server_privileged_host: "%"
@@ -44,6 +49,7 @@ provisioner:
         zabbix_server_mysql_login_port: 3306
       pgsql:
         zabbix_server_database: pgsql
+        zabbix_server_dbport: 5432
         zabbix_server_dbhost: "{{ inventory_hostname }}-db"
         zabbix_server_dbhost_run_install: false
         zabbix_server_pgsql_login_host: "{{ inventory_hostname }}-db"

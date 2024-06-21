@@ -75,21 +75,15 @@ Click on the name of a plugin or module to view that content's documentation:
 
 ### Requirements
 
-Some of the components in this collection requires additional dependencies. Review components you are interested in by visiting links present in the [Included content](#included-content) section.
+Each component in this collection requires additional dependencies. Review components you are interested in by visiting links present in the [Included content](#included-content) section.
 
-While the various roles and modules may work with earlier versions of Python and Ansible, they are only tested and maintained against Ansible Core >= 2.15 and python >= 3.9 
+This is especially important for some of the Zabbix roles that require you to **install additional standalone roles** from Ansible Galaxy.
 
-#### External Collections
+For the majority of modules, however, you can get away with just:
 
-Additional collections may be required when running the various roles.
+#### Ansible 2.10 and higher
 
-* `ansible.posix`:  Required if using SELinux portion of any roles
-* `ansible.general`:  Required if using SELinux portion of any roles
-* `ansible.netcommon`:  Required when using the agent role
-* `community.mysql`:  Required for the proxy or server roles if using MySQL
-* `community.postgresql`:  Required for the proxy or server roles if using PostgreSQL
-* `community.windows`:  Required for the agent role if installing on Windows
-
+With the release of Ansible 2.10, modules have been moved into collections.  With the exception of ansible.builtin modules, this means additonal collections must be installed in order to use modules such as seboolean (now ansible.posix.seboolean).  The following collections are now frequently required: `ansible.posix` and `community.general`.  Installing the collections:
 
 ```bash
 ansible-galaxy collection install ansible.posix
@@ -110,7 +104,7 @@ You can also include it in a `requirements.yml` file along with other required c
 ---
 collections:
   - name: community.zabbix
-    version: 2.5.1
+    version: 2.4.0
   - name: ansible.posix
     version: 1.3.0
   - name: community.general

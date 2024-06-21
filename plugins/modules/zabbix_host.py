@@ -73,22 +73,9 @@ options:
         choices: ["present", "absent"]
         default: "present"
         type: str
-    monitored_by:
-        description:
-           - Parameter introduced in Zabbix 7.0.
-           - Source that is used to monitor the host.
-        choices: ["zabbix_server", "proxy", "proxy_group"]
-        type: str
     proxy:
         description:
             - The name of the Zabbix proxy to be used.
-            - Required if C(monitored_by) is "proxy"
-        type: str
-    proxy_group:
-        description:
-            - Parameter introduced in Zabbix 7.0.
-            - Proxy group that is used to monitor the host.
-            - Required if C(monitored_by) is "proxy_group"
         type: str
     interfaces:
         type: list
@@ -360,7 +347,7 @@ EXAMPLES = r"""
   ansible.builtin.set_fact:
     ansible_zabbix_auth_key: 8ec0d52432c15c91fcafe9888500cf9a607f44091ab554dbee860f6b44fac895
 
-- name: Create a new host or rewrite an existing host's info (Zabbix <= 7.0)
+- name: Create a new host or rewrite an existing host's info
 # Set task level following variables for Zabbix Server host in task
   vars:
     ansible_network_os: community.zabbix.zabbix
@@ -421,46 +408,6 @@ EXAMPLES = r"""
       - tag: ExampleHostsTag2
         value: ExampleTagValue
 
-- name: Create a new host or update it - monitored by Zabbix Proxy (Zabbix >= 7.0)
-# Set task level following variables for Zabbix Server host in task
-  vars:
-    ansible_network_os: community.zabbix.zabbix
-    ansible_connection: httpapi
-    ansible_httpapi_port: 443
-    ansible_httpapi_use_ssl: true
-    ansible_httpapi_validate_certs: false
-    ansible_zabbix_url_path: "zabbixeu"  # If Zabbix WebUI runs on non-default (zabbix) path ,e.g. http://<FQDN>/zabbixeu
-  become: false
-  delegate_to: zabbix-example-fqdn.org# you can use delegate_to or task level ansible_host like next example
-  community.zabbix.zabbix_host:
-    host_name: ExampleHost
-    host_groups:
-      - Example group1
-    status: enabled
-    state: present
-    monitored_by: proxy
-    proxy: a.zabbix.proxy
-
-- name: Create a new host or update it - monitored by Zabbix Proxy Group (Zabbix >= 7.0)
-# Set task level following variables for Zabbix Server host in task
-  vars:
-    ansible_network_os: community.zabbix.zabbix
-    ansible_connection: httpapi
-    ansible_httpapi_port: 443
-    ansible_httpapi_use_ssl: true
-    ansible_httpapi_validate_certs: false
-    ansible_zabbix_url_path: "zabbixeu"  # If Zabbix WebUI runs on non-default (zabbix) path ,e.g. http://<FQDN>/zabbixeu
-  become: false
-  delegate_to: zabbix-example-fqdn.org# you can use delegate_to or task level ansible_host like next example
-  community.zabbix.zabbix_host:
-    host_name: ExampleHost
-    host_groups:
-      - Example group1
-    status: enabled
-    state: present
-    monitored_by: proxy_group
-    proxy: a.zabbix.proxy.group
-
 - name: Update an existing host's TLS settings
 # Set current task level variables for Zabbix Server host in task
   vars:
@@ -490,8 +437,6 @@ from ansible.module_utils.basic import AnsibleModule
 
 from ansible_collections.community.zabbix.plugins.module_utils.base import ZabbixBase
 
-from ansible.module_utils.compat.version import LooseVersion
-
 import ansible_collections.community.zabbix.plugins.module_utils.helpers as zabbix_utils
 
 
@@ -514,7 +459,7 @@ class Host(ZabbixBase):
         if template_list is None or len(template_list) == 0:
             return template_ids
         for template in template_list:
-            template_list = self._zapi.template.get({"output": ["templateid"], "filter": {"host": template}})
+            template_list = self._zapi.template.get({"output": "extend", "filter": {"host": template}})
             if len(template_list) < 1:
                 self._module.fail_json(msg="Template not found: %s" % template)
             else:
@@ -524,23 +469,13 @@ class Host(ZabbixBase):
 
     def add_host(self, host_name, group_ids, status, interfaces, proxy_id, visible_name, description, tls_connect,
                  tls_accept, tls_psk_identity, tls_psk, tls_issuer, tls_subject, ipmi_authtype, ipmi_privilege,
-                 ipmi_username, ipmi_password, macros, tags, monitored_by, proxy_group_id):
+                 ipmi_username, ipmi_password, macros, tags):
         try:
             if self._module.check_mode:
                 self._module.exit_json(changed=True)
             parameters = {"host": host_name, "interfaces": interfaces, "groups": group_ids, "status": status}
-            if LooseVersion(self._zbx_api_version) < LooseVersion("7.0"):
-                if proxy_id:
-                    parameters["proxy_hostid"] = proxy_id
-            else:
-                if monitored_by == 1:
-                    if proxy_id:
-                        parameters["monitored_by"] = 1  # By single proxy
-                        parameters["proxyid"] = proxy_id
-                elif monitored_by == 2:
-                    if proxy_group_id:
-                        parameters["monitored_by"] = 2  # By single proxy
-                        parameters["proxy_groupid"] = proxy_group_id
+            if proxy_id:
+                parameters["proxy_hostid"] = proxy_id
             if visible_name:
                 parameters["name"] = visible_name
             if tls_connect:
@@ -578,8 +513,7 @@ class Host(ZabbixBase):
 
     def update_host(self, host_name, group_ids, status, host_id, interfaces, exist_interface_list, proxy_id,
                     visible_name, description, tls_connect, tls_accept, tls_psk_identity, tls_psk, tls_issuer,
-                    tls_subject, ipmi_authtype, ipmi_privilege, ipmi_username, ipmi_password, macros, tags,
-                    discovered_host, zabbix_host_obj, monitored_by, proxy_group_id):
+                    tls_subject, ipmi_authtype, ipmi_privilege, ipmi_username, ipmi_password, macros, tags, discovered_host, zabbix_host_obj):
         try:
             if self._module.check_mode:
                 self._module.exit_json(changed=True)
@@ -589,17 +523,8 @@ class Host(ZabbixBase):
             else:
                 # A "plain" host
                 parameters = {"hostid": host_id, "groups": group_ids, "status": status}
-                if LooseVersion(self._zbx_api_version) < LooseVersion("7.0"):
-                    if (proxy_id >= 0 and proxy_id != zabbix_host_obj["proxy_hostid"]):
-                        parameters["proxy_hostid"] = proxy_id
-                else:
-                    if monitored_by == 1:
-                        if (proxy_id >= 0 and proxy_id != zabbix_host_obj["proxyid"]):
-                            parameters["proxyid"] = proxy_id
-                    elif monitored_by == 2:
-                        if (proxy_group_id >= 0 and proxy_group_id != zabbix_host_obj["proxy_groupid"]):
-                            parameters["proxy_groupid"] = proxy_group_id
-                    parameters["monitored_by"] = monitored_by
+                if (proxy_id >= 0 and proxy_id != zabbix_host_obj["proxy_hostid"]):
+                    parameters["proxy_hostid"] = proxy_id
                 if (visible_name is not None and visible_name != zabbix_host_obj["name"]):
                     parameters["name"] = visible_name
                 if (tls_connect is not None and tls_connect != zabbix_host_obj["tls_connect"]):
@@ -646,7 +571,34 @@ class Host(ZabbixBase):
     # get host by host name
     def get_host_by_host_name(self, host_name):
         params = {
-            "output": "extend",
+            "output": [
+                "inventory_mode",
+                "hostid",
+                "proxy_hostid",
+                "host",
+                "status",
+                "lastaccess",
+                "ipmi_authtype",
+                "ipmi_privilege",
+                "ipmi_username",
+                "ipmi_password",
+                "maintenanceid",
+                "maintenance_status",
+                "maintenance_type",
+                "maintenance_from",
+                "name",
+                "flags",
+                "templateid",
+                "description",
+                "tls_connect",
+                "tls_accept",
+                "tls_issuer",
+                "tls_subject",
+                "proxy_address",
+                "auto_compress",
+                "custom_interfaces",
+                "uuid"
+            ],
             "selectInventory": "extend",
             "selectMacros": "extend",
             "selectTags": ["tag", "value"],
@@ -663,31 +615,20 @@ class Host(ZabbixBase):
 
     # get proxyid by proxy name
     def get_proxyid_by_proxy_name(self, proxy_name):
-        if LooseVersion(self._zbx_api_version) < LooseVersion("7.0"):
-            proxy_list = self._zapi.proxy.get({"output": "extend", "filter": {"host": [proxy_name]}})
-        else:
-            proxy_list = self._zapi.proxy.get({"output": "extend", "filter": {"name": [proxy_name]}})
+        proxy_list = self._zapi.proxy.get({"output": "extend", "filter": {"host": [proxy_name]}})
         if len(proxy_list) < 1:
             self._module.fail_json(msg="Proxy not found: %s" % proxy_name)
         else:
             return int(proxy_list[0]["proxyid"])
 
-    # get proxy_group_id by proxy group name
-    def get_proxy_group_id_by_name(self, proxy_group_name):
-        proxy_group_list = self._zapi.proxygroup.get({"output": "extend", "filter": {"name": proxy_group_name}})
-        if len(proxy_group_list) < 1:
-            self._module.fail_json(msg="Proxy group not found: %s" % proxy_group_name)
-        else:
-            return int(proxy_group_list[0]["proxy_groupid"])
-
     # get group ids by group names
     def get_group_ids_by_group_names(self, group_names):
         if self.check_host_group_exist(group_names):
-            return self._zapi.hostgroup.get({"output": ["groupid"], "filter": {"name": group_names}})
+            return self._zapi.hostgroup.get({"output": "extend", "filter": {"name": group_names}})
 
     # get host groups ids by host id
     def get_group_ids_by_host_id(self, host_id):
-        return self._zapi.hostgroup.get({"output": ["groupid"], "hostids": host_id})
+        return self._zapi.hostgroup.get({"output": "extend", "hostids": host_id})
 
     # get host templates by host id
     def get_host_templates_by_host_id(self, host_id):
@@ -774,7 +715,7 @@ class Host(ZabbixBase):
                              exist_interfaces, host, proxy_id, visible_name, description, host_name,
                              inventory_mode, inventory_zabbix, tls_accept, tls_psk_identity, tls_psk,
                              tls_issuer, tls_subject, tls_connect, ipmi_authtype, ipmi_privilege,
-                             ipmi_username, ipmi_password, macros, tags, monitored_by, proxy_group_id):
+                             ipmi_username, ipmi_password, macros, tags):
         # get the existing host's groups
         exist_host_groups = sorted(self.get_group_ids_by_host_id(host_id), key=lambda k: k["groupid"])
         if sorted(group_ids, key=lambda k: k["groupid"]) != exist_host_groups:
@@ -794,16 +735,8 @@ class Host(ZabbixBase):
         if set(list(template_ids)) != set(exist_template_ids):
             return True
 
-        if LooseVersion(self._zbx_api_version) < LooseVersion("7.0"):
-            if int(host["proxy_hostid"]) != int(proxy_id):
-                return True
-        else:
-            if int(host["monitored_by"]) != monitored_by:
-                return True
-            if int(host["proxyid"]) != int(proxy_id):
-                return True
-            if int(host["proxy_groupid"]) != int(proxy_group_id):
-                return True
+        if int(host["proxy_hostid"]) != int(proxy_id):
+            return True
 
         # Check whether the visible_name has changed; Zabbix defaults to the technical hostname if not set.
         if visible_name:
@@ -883,18 +816,11 @@ class Host(ZabbixBase):
         exist_template_ids = set(exist_template_id_list)
         template_ids = set(template_id_list)
         template_id_list = list(template_ids)
-        template_id_list_ = []
-        for t in template_id_list:
-            template_id_list_.append({"templateid": t})
 
         # get unlink and clear templates
         templates_clear = exist_template_ids.difference(template_ids)
         templates_clear_list = list(templates_clear)
-        templates_clear_list_ = []
-        for t in templates_clear_list:
-            templates_clear_list_.append({"templateid": t})
-
-        request_str = {"hostid": host_id, "templates": template_id_list_, "templates_clear": templates_clear_list_}
+        request_str = {"hostid": host_id, "templates": template_id_list, "templates_clear": templates_clear_list}
         try:
             if self._module.check_mode:
                 self._module.exit_json(changed=True)
@@ -1047,9 +973,7 @@ def main():
             ]
         ),
         force=dict(type="bool", default=True),
-        monitored_by=dict(type="str", required=False, choices=["zabbix_server", "proxy", "proxy_group"], default=None),
         proxy=dict(type="str", required=False),
-        proxy_group=dict(type="str", required=False),
         visible_name=dict(type="str", required=False),
         description=dict(type="str", required=False),
         macros=dict(
@@ -1073,13 +997,8 @@ def main():
             )
         )
     ))
-
     module = AnsibleModule(
         argument_spec=argument_spec,
-        required_if=([
-            ["monitored_by", "proxy", ("proxy",)],
-            ["monitored_by", "proxy_group", ("proxy_group",)]
-        ]),
         supports_check_mode=True
     )
 
@@ -1107,19 +1026,9 @@ def main():
     proxy = module.params["proxy"]
     macros = module.params["macros"]
     tags = module.params["tags"]
-    monitored_by = module.params["monitored_by"]
-    proxy_group = module.params["proxy_group"]
 
     # convert enabled to 0; disabled to 1
     status = 1 if status == "disabled" else 0
-
-    # convert monitored_by to int
-    if monitored_by == "zabbix_server":
-        monitored_by = 0
-    elif monitored_by == "proxy":
-        monitored_by = 1
-    elif monitored_by == "proxy_group":
-        monitored_by = 2
 
     host = Host(module)
 
@@ -1154,11 +1063,6 @@ def main():
     else:
         proxy_id = 0
 
-    if proxy_group:
-        proxy_group_id = host.get_proxy_group_id_by_name(proxy_group)
-    else:
-        proxy_group_id = 0
-
     # check if host exist
     is_host_exist = host.is_host_exist(host_name)
 
@@ -1170,17 +1074,7 @@ def main():
 
         # If proxy is not specified as a module parameter, use the existing setting
         if proxy is None:
-            if LooseVersion(host._zbx_api_version) < LooseVersion("7.0"):
-                proxy_id = int(zabbix_host_obj["proxy_hostid"])
-            else:
-                proxy_id = int(zabbix_host_obj["proxyid"])
-
-        if LooseVersion(host._zbx_api_version) >= LooseVersion("7.0"):
-            # If monitored_by and proxy_group are not specified as a module parameters, use the existing setting
-            if monitored_by is None:
-                monitored_by = int(zabbix_host_obj["monitored_by"])
-            if proxy_group is None:
-                proxy_group_id = int(zabbix_host_obj["proxy_groupid"])
+            proxy_id = int(zabbix_host_obj["proxy_hostid"])
 
         if state == "absent":
             # remove host
@@ -1289,13 +1183,12 @@ def main():
                     host_id, group_ids, status, interfaces, template_ids, exist_interfaces, zabbix_host_obj, proxy_id,
                     visible_name, description, host_name, inventory_mode, inventory_zabbix, tls_accept, tls_psk_identity, tls_psk,
                     tls_issuer, tls_subject, tls_connect, ipmi_authtype, ipmi_privilege,
-                    ipmi_username, ipmi_password, macros, tags, monitored_by, proxy_group_id):
+                    ipmi_username, ipmi_password, macros, tags):
 
                 host.update_host(
                     host_name, group_ids, status, host_id, interfaces, exist_interfaces, proxy_id, visible_name,
                     description, tls_connect, tls_accept, tls_psk_identity, tls_psk, tls_issuer, tls_subject,
-                    ipmi_authtype, ipmi_privilege, ipmi_username, ipmi_password, macros, tags, discovered_host, zabbix_host_obj,
-                    monitored_by, proxy_group_id)
+                    ipmi_authtype, ipmi_privilege, ipmi_username, ipmi_password, macros, tags, discovered_host, zabbix_host_obj)
 
                 host.link_or_clear_template(host_id, template_ids)
 
@@ -1303,7 +1196,7 @@ def main():
                 host.update_inventory_zabbix(host_id, inventory_zabbix)
 
                 module.exit_json(changed=True,
-                                 result="Successfully updated host %s (%s) and linked with template '%s'"
+                                 result="Successfully update host %s (%s) and linked with template '%s'"
                                         % (host_name, ip, link_templates))
             else:
                 module.exit_json(changed=False)
@@ -1322,7 +1215,7 @@ def main():
         host_id = host.add_host(
             host_name, group_ids, status, interfaces, proxy_id, visible_name, description, tls_connect, tls_accept,
             tls_psk_identity, tls_psk, tls_issuer, tls_subject, ipmi_authtype, ipmi_privilege, ipmi_username,
-            ipmi_password, macros, tags, monitored_by, proxy_group_id)
+            ipmi_password, macros, tags)
 
         host.link_or_clear_template(host_id, template_ids)
 

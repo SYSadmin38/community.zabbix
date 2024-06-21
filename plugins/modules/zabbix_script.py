@@ -26,15 +26,15 @@ options:
         type: str
     script_type:
         description:
-            - Script type. Required when state is 'present'.
+            - Script type.
         type: str
-        required: false
+        required: true
         choices: ["script", "ipmi", "ssh", "telnet", "webhook"]
     command:
         description:
-            - Command to run. Required when state is 'present'
+            - Command to run.
         type: str
-        required: false
+        required: true
     scope:
         description:
             - Script scope.
@@ -137,9 +137,9 @@ options:
         suboptions:
             name:
                 description:
-                    - Parameter name. Required when 'parameters' is specified for a 'webhook' script.
+                    - Parameter name.
                 type: str
-                required: false
+                required: true
             value:
                 description:
                     - Parameter value. Supports macros.
@@ -292,16 +292,24 @@ class Script(ZabbixBase):
                 request["confirmation"] = confirmation
 
         if script_type == "ssh":
+            if authtype is None:
+                self._module.fail_json(changed=False, msg="authtype must be provided for ssh script type")
             request["authtype"] = str(zabbix_utils.helper_to_numeric_value([
                 "password",
                 "public_key"], authtype))
             if authtype == "public_key":
+                if publickey is None or privatekey is None:
+                    self._module.fail_json(changed=False, msg="publickey and privatekey must be provided for ssh script type with publickey authtype")
                 request["publickey"] = publickey
                 request["privatekey"] = privatekey
 
         if script_type in ["ssh", "telnet"]:
+            if username is None:
+                self._module.fail_json(changed=False, msg="username must be provided for 'ssh' and 'telnet' script types")
             request["username"] = username
             if (script_type == "ssh" and authtype == "password") or script_type == "telnet":
+                if password is None:
+                    self._module.fail_json(changed=False, msg="password must be provided for telnet script type or ssh script type with password autheype")
                 request["password"] = password
             if port is not None:
                 request["port"] = port
@@ -309,9 +317,6 @@ class Script(ZabbixBase):
         if script_type == "webhook":
             request["timeout"] = script_timeout
             if parameters:
-                for parameter in parameters:
-                    if "name" not in parameter.keys() or parameter["name"] is None:
-                        self._module.fail_json(msg="When providing parameters to a webhook script, the 'name' option is required.")
                 request["parameters"] = parameters
 
         return request
@@ -342,59 +347,56 @@ def main():
         name=dict(type="str", required=True),
         script_type=dict(
             type="str",
+            required=True,
             choices=["script", "ipmi", "ssh", "telnet", "webhook"]),
-        command=dict(type="str"),
+        command=dict(type="str", required=True),
         scope=dict(
             type="str",
+            required=False,
             choices=["action_operation", "manual_host_action", "manual_event_action"],
             default="action_operation"),
         execute_on=dict(
             type="str",
+            required=False,
             choices=["zabbix_agent", "zabbix_server", "zabbix_server_proxy"],
             default="zabbix_server_proxy"),
-        menu_path=dict(type="str"),
+        menu_path=dict(type="str", required=False),
         authtype=dict(
             type="str",
+            required=False,
             choices=["password", "public_key"]),
-        username=dict(type="str"),
-        password=dict(type="str", no_log=True),
-        publickey=dict(type="str"),
-        privatekey=dict(type="str", no_log=True),
-        port=dict(type="str"),
-        host_group=dict(type="str", default="all"),
-        user_group=dict(type="str", default="all"),
+        username=dict(type="str", required=False),
+        password=dict(type="str", required=False, no_log=True),
+        publickey=dict(type="str", required=False),
+        privatekey=dict(type="str", required=False, no_log=True),
+        port=dict(type="str", required=False),
+        host_group=dict(type="str", required=False, default="all"),
+        user_group=dict(type="str", required=False, default="all"),
         host_access=dict(
             type="str",
+            required=False,
             choices=["read", "write"],
             default="read"),
-        confirmation=dict(type="str"),
-        script_timeout=dict(type="str", default="30s"),
+        confirmation=dict(type="str", required=False),
+        script_timeout=dict(type="str", default="30s", required=False),
         parameters=dict(
             type="list",
             elements="dict",
             options=dict(
-                name=dict(type="str"),
-                value=dict(type="str", default="")
+                name=dict(type="str", required=True),
+                value=dict(type="str", required=False, default="")
             )
         ),
-        description=dict(type="str"),
+        description=dict(type="str", required=False),
         state=dict(
             type="str",
+            required=False,
             default="present",
             choices=["present", "absent"])
     ))
 
-    required_if = [
-        ("state", "present", ("script_type", "command",)),
-        ("script_type", "ssh", ("authtype", "username",)),
-        ("authtype", "password", ("password",)),
-        ("authtype", "public_key", ("publickey", "privatekey",)),
-        ("script_type", "telnet", ("username", "password")),
-    ]
-
     module = AnsibleModule(
         argument_spec=argument_spec,
-        required_if=required_if,
         supports_check_mode=True
     )
 

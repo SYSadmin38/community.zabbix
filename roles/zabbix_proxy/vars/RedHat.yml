@@ -1,27 +1,38 @@
 zabbix_valid_proxy_versions:
   "9":
-    - 7.0
     - 6.4
+    - 6.2
     - 6.0
   "8":
-    - 7.0
     - 6.4
+    - 6.2
+    - 6.0
+  "7":
+    - 6.4
+    - 6.2
     - 6.0
 
-_zabbix_proxy_pgsql_dependencies:
-  - "{{ zabbix_proxy_install_database_client | ternary('postgresql', '') }}"
-  - python3-psycopg2
-
-_zabbix_proxy_mysql_dependencies:
+pgsql_depenencies:
   "9":
-    - "{{ zabbix_proxy_install_database_client | ternary('mysql', '') }}"
+    - python3-psycopg2
+    - postgresql
+  "8":
+    - python3-psycopg2
+    - postgresql
+  "7":
+    - python-psycopg2
+    - postgresql
+
+mysql_client_pkgs:
+  "9":
+    - mysql
     - python3-PyMySQL
   "8":
-    - "{{ zabbix_proxy_install_database_client | ternary('mysql', '') }}"
+    - mysql
     - python3-PyMySQL
-
-_zabbix_proxy_sqlite3_dependencies:
-  - sqlite
+  "7":
+    - MariaDB-client
+    - MySQL-python
 
 selinux_pkgs:
   "9":
@@ -37,12 +48,8 @@ selinux_pkgs:
     - libsemanage-python
     - checkpolicy
 
+mysql_plugin:
+  "7": mysql_native_password
+
 _zabbix_proxy_fping6location: /usr/sbin/fping6
 _zabbix_proxy_fpinglocation: /usr/sbin/fping
-
-_zabbix_proxy_packages:
-  - "zabbix-proxy-{{ zabbix_proxy_database }}-{{ zabbix_proxy_version }}.{{ zabbix_proxy_version_minor }}"
-  - "zabbix-sql-scripts-{{ zabbix_proxy_version }}.{{ zabbix_proxy_version_minor }}"
-
-_zabbix_proxy_disable_repo:
-  - epel
